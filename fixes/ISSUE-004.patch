@@ -1,0 +1,95 @@
+diff --git a/prs/ISSUE-004.md b/prs/ISSUE-004.md
+new file mode 100644
+index 0000000..ff4f413
+--- /dev/null
++++ b/prs/ISSUE-004.md
+@@ -0,0 +1,41 @@
++# fix: reserve() oversells when reservations already exist (ISSUE-004)
++
++Fixes ISSUE-004
++
++## Root cause
++
++[`Inventory.reserve()`](shopcart/inventory.py:21) guarded against overselling by
++comparing the requested quantity to `self._stock.get(sku, 0)` — raw physical
++stock — rather than to the units actually still available. Because it ignored
++existing reservations, a second concurrent call could read the same raw stock
++value and be accepted even when the available units had already been spoken for.
++**Concrete failure:** stock = 5, first order reserves 3 (available drops to 2),
++second order also requests 3 — guard saw 3 ≤ 5 (raw) and wrongly accepted it,
++overselling by 1 unit.
++
++## Fix
++
++One-line change in [`shopcart/inventory.py`](shopcart/inventory.py:21):
++
++```diff
++-        if quantity > self._stock.get(sku, 0):
+++        if quantity > self.available(sku):
++```
++
++`self.available(sku)` already returns `_stock − _reserved`, so the guard now
++rejects any reservation that would exceed truly available units.
++
++## Verification
++
++Added `test_issue_004_concurrent_reservation_race` in
++[`tests/test_inventory.py`](tests/test_inventory.py) — asserts that a second
++reservation of 3 units against stock of 5 (with 3 already reserved) raises
++`OutOfStock`. All 21 tests pass.
++
++## Risk / what to review
++
++- **Low risk.** Single-line change; touches only the guard condition, not the
++  reservation accounting logic.
++- Verify `available()` is correct under all restock / commit / release paths
++  (existing tests cover this).
++- No schema, API, or interface changes.
+diff --git a/shopcart/inventory.py b/shopcart/inventory.py
+index af62f95..e5fe122 100644
+--- a/shopcart/inventory.py
++++ b/shopcart/inventory.py
+@@ -18,7 +18,7 @@ class Inventory:
+         return self._stock.get(sku, 0) - self._reserved.get(sku, 0)
+ 
+     def reserve(self, sku: str, quantity: int) -> None:
+-        if quantity > self._stock.get(sku, 0):
++        if quantity > self.available(sku):
+             raise OutOfStock(f"not enough stock for {sku}")
+         self._reserved[sku] = self._reserved.get(sku, 0) + quantity
+ 
+diff --git a/tests/test_inventory.py b/tests/test_inventory.py
+index 49875b5..3925fb8 100644
+--- a/tests/test_inventory.py
++++ b/tests/test_inventory.py
+@@ -1,6 +1,6 @@
+ import pytest
+ 
+-from shopcart.inventory import OutOfStock
++from shopcart.inventory import Inventory, OutOfStock
+ 
+ 
+ def test_reserve_reduces_available(inventory):
+@@ -18,3 +18,22 @@ def test_commit_and_release(inventory):
+     inventory.commit("A100", 3)
+     inventory.release("A100", 1)
+     assert inventory.available("A100") == 7
++
++
++def test_issue_004_concurrent_reservation_race():
++    """Two orders of 3 units each against 5 in stock: second must raise OutOfStock.
++
++    The race: reserve() checks against raw _stock instead of available(),
++    so both reads see 5 >= 3 before either write lands. This test exploits that
++    window sequentially — first reserve succeeds, second must fail because only
++    2 units remain available.
++    """
++    inv = Inventory()
++    inv.restock("C100", 5)
++
++    # First order reserves 3 — must succeed.
++    inv.reserve("C100", 3)
++
++    # Second order also asks for 3, but only 2 units are still available.
++    with pytest.raises(OutOfStock):
++        inv.reserve("C100", 3)

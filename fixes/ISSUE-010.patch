@@ -1,0 +1,73 @@
+diff --git a/shopcart/orders.py b/shopcart/orders.py
+index 520ad3b..c2da9ed 100644
+--- a/shopcart/orders.py
++++ b/shopcart/orders.py
+@@ -26,6 +26,7 @@ class OrderBook:
+     def __init__(self, inventory: Inventory) -> None:
+         self.inventory = inventory
+         self._orders: dict[str, Order] = {}
++        self._next_id = 0
+ 
+     def place(
+         self,
+@@ -48,7 +49,8 @@ class OrderBook:
+                 self.inventory.release(item.product.sku, item.quantity)
+             raise
+ 
+-        order_id = f"ORD-{len(self._orders) + 1:05d}"
++        self._next_id += 1
++        order_id = f"ORD-{self._next_id:05d}"
+         order = Order(
+             id=order_id,
+             customer_id=cart.customer_id,
+diff --git a/tests/test_orders.py b/tests/test_orders.py
+index 79539ad..1e2df02 100644
+--- a/tests/test_orders.py
++++ b/tests/test_orders.py
+@@ -41,3 +41,46 @@ def test_reorder_copies_items(inventory, mouse):
+     again = book.reorder(order.id)
+     assert again.customer_id == "c1"
+     assert [(i.product.sku, i.quantity) for i in again.items] == [("A100", 2)]
++
++
++def test_order_id_not_reused_after_cancellation(inventory, mouse, keyboard):
++    """Regression test for ISSUE-010.
++
++    When a cancelled order is removed from the book, the next order must NOT
++    receive an ID that was already issued — even if that ID slot appears free
++    because len(_orders) has shrunk back down.
++
++    Sequence:
++      1. Customer A places order → ORD-00001
++      2. Customer B places order → ORD-00002
++      3. Customer A cancels ORD-00001
++      4. Customer C places order → must NOT be ORD-00002 (collision with B's order)
++    """
++    book = OrderBook(inventory)
++
++    cart_a = Cart("customer-A")
++    cart_a.add(mouse, 1)
++    order_a = book.place(cart_a, "CA", today=MONDAY)
++    assert order_a.id == "ORD-00001"
++
++    cart_b = Cart("customer-B")
++    cart_b.add(keyboard, 1)
++    order_b = book.place(cart_b, "CA", today=MONDAY)
++    assert order_b.id == "ORD-00002"
++
++    book.cancel(order_a.id)
++
++    cart_c = Cart("customer-C")
++    cart_c.add(mouse, 1)
++    order_c = book.place(cart_c, "CA", today=MONDAY)
++
++    # B's order must still be retrievable and untouched
++    assert book.get(order_b.id) is order_b, (
++        f"Customer B's order ({order_b.id}) was overwritten by Customer C's order"
++    )
++
++    # C must receive a brand-new, never-before-issued ID
++    assert order_c.id != order_b.id, (
++        f"ID collision: Customer C received '{order_c.id}', "
++        f"which was already issued to Customer B"
++    )

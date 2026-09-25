@@ -1,0 +1,13 @@
+issue,bobcoins,minutes,bob_says_fixed,notes
+ISSUE-002-smoke,2.45,,yes,smoke test 2026-09-23 (before mode tuning)
+ISSUE-002,2.09,,yes,batch A (8.36 total / 4 issues)
+ISSUE-001,2.09,,yes,batch A (8.36 total / 4 issues)
+ISSUE-003,2.09,,yes,batch A (8.36 total / 4 issues)
+ISSUE-004,2.09,,yes,batch A (8.36 total / 4 issues)
+ISSUE-005,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%); fix incomplete (hidden test)
+ISSUE-008,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
+ISSUE-009,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
+ISSUE-010,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
+ISSUE-006,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
+ISSUE-007,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
+ISSUE-005-retry,,,yes,second independent run: same partial fix (reorder only); hidden test still fails

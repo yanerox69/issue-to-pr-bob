@@ -1,0 +1,91 @@
+diff --git a/prs/ISSUE-007.md b/prs/ISSUE-007.md
+new file mode 100644
+index 0000000..4c9f160
+--- /dev/null
++++ b/prs/ISSUE-007.md
+@@ -0,0 +1,52 @@
++# fix: strip UTF-8 BOM from Excel-saved CSV files (ISSUE-007)
++
++Fixes ISSUE-007
++
++## Summary
++
++`load_products()` raised `KeyError: 'sku'` on any CSV saved from Excel via
++"Save As → CSV UTF-8" because Excel prepends a UTF-8 BOM (U+FEFF) to the
++file and the `open()` call used `encoding="utf-8"`, which does not strip it.
++
++## Root Cause
++
++`shopcart/csv_import.py` line 9:
++
++```python
++with open(path, encoding="utf-8") as f:
++```
++
++`utf-8` passes the BOM byte-sequence through as the literal character `\ufeff`.
++`str.strip()` does not remove it (it is not ASCII whitespace), so the first
++header token read was `'\ufeffsku'` instead of `'sku'`. Every subsequent
++`row["sku"]` lookup then raised `KeyError`.
++
++## Fix
++
++One-word change — `utf-8` → `utf-8-sig`:
++
++```python
++with open(path, encoding="utf-8-sig") as f:
++```
++
++`utf-8-sig` silently strips the BOM when present and behaves identically to
++`utf-8` when the BOM is absent, so both Excel-saved and Google Sheets exports
++continue to work without any branching logic.
++
++## Testing
++
++- **New test:** `tests/test_csv_import.py::test_issue_007_bom_utf8_csv`
++  — writes a BOM-prefixed CSV as raw bytes and asserts `products[0].sku == "A1"`.
++- **Suite result:** 21/21 tests pass (`python -m pytest -q`).
++
++## Risk / What to Review
++
++- `utf-8-sig` is stdlib — no new dependency.
++- Only the `open()` encoding argument changes; all parsing logic is untouched.
++- Low risk: the codec is a strict superset of `utf-8` for BOM-free files.
++
++---
++
++```
++git push origin fix/issue-007
++```
+diff --git a/shopcart/csv_import.py b/shopcart/csv_import.py
+index a480e55..733a2fb 100644
+--- a/shopcart/csv_import.py
++++ b/shopcart/csv_import.py
+@@ -6,7 +6,7 @@ from .models import Product
+ 
+ def load_products(path: str | Path) -> list[Product]:
+     products = []
+-    with open(path, encoding="utf-8") as f:
++    with open(path, encoding="utf-8-sig") as f:
+         header = f.readline().strip().split(",")
+         for line in f:
+             if not line.strip():
+diff --git a/tests/test_csv_import.py b/tests/test_csv_import.py
+index 9d2e1cf..2f964ac 100644
+--- a/tests/test_csv_import.py
++++ b/tests/test_csv_import.py
+@@ -17,3 +17,15 @@ def test_missing_category_defaults(tmp_path):
+     f = tmp_path / "p.csv"
+     f.write_text("sku,name,price,category\nZ1,Thing,1.00,\n", encoding="utf-8")
+     assert load_products(f)[0].category == "general"
++
++
++def test_issue_007_bom_utf8_csv(tmp_path):
++    """Excel 'Save As → CSV UTF-8' prepends a UTF-8 BOM (U+FEFF).
++    load_products() must handle it and return the correct sku, not raise KeyError."""
++    f = tmp_path / "excel_export.csv"
++    # Write raw bytes: UTF-8 BOM followed by normal CSV content
++    f.write_bytes(
++        "\ufeffsku,name,price,category\nA1,Widget,9.99,tools\n".encode("utf-8")
++    )
++    products = load_products(f)
++    assert products[0].sku == "A1"

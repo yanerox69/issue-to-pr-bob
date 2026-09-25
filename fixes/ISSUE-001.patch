@@ -1,0 +1,79 @@
+diff --git a/prs/ISSUE-001.md b/prs/ISSUE-001.md
+new file mode 100644
+index 0000000..eba06ee
+--- /dev/null
++++ b/prs/ISSUE-001.md
+@@ -0,0 +1,35 @@
++# fix: invoice totals off by one cent due to banker's rounding
++
++Fixes ISSUE-001
++
++## Root cause
++
++[`shopcart/pricing.py`](shopcart/pricing.py) imported and applied `ROUND_HALF_EVEN`
++(Python's default "banker's rounding") in `round_money()`. Banker's rounding rounds
++ties toward the nearest even digit, so `2.665` became `2.66` instead of `2.67`.
++Company policy mandates **half-up rounding** for all monetary values.
++
++## Fix
++
++Two-line change — swap `ROUND_HALF_EVEN` for `ROUND_HALF_UP` in:
++
++1. The import on line 1 of `shopcart/pricing.py`
++2. The `rounding=` argument in `round_money()` on line 12
++
++No logic, no schema, no API surface changed.
++
++## Verification
++
++Added two regression tests in [`tests/test_pricing.py`](tests/test_pricing.py):
++
++- `test_issue_001_round_half_up_2665` — asserts `2.665 → 2.67`
++- `test_issue_001_round_half_up_0125` — asserts `0.125 → 0.13`
++
++All **22 tests pass**.
++
++## Risk
++
++Low. `round_money()` is called only at the final aggregation step (invoice total).
++The rounding mode change can shift a result by exactly `$0.01` on midpoint values;
++this is the intended correction. No downstream systems consume raw `Decimal` objects
++— they receive the already-rounded string/float from the serialiser.
+diff --git a/shopcart/pricing.py b/shopcart/pricing.py
+index 3a27904..1b053f6 100644
+--- a/shopcart/pricing.py
++++ b/shopcart/pricing.py
+@@ -1,5 +1,5 @@
+ from datetime import date
+-from decimal import Decimal, ROUND_HALF_EVEN
++from decimal import Decimal, ROUND_HALF_UP
+ from typing import Iterable
+ 
+ from . import discounts, tax
+@@ -9,7 +9,7 @@ CENT = Decimal("0.01")
+ 
+ 
+ def round_money(amount: Decimal) -> Decimal:
+-    return amount.quantize(CENT, rounding=ROUND_HALF_EVEN)
++    return amount.quantize(CENT, rounding=ROUND_HALF_UP)
+ 
+ 
+ def subtotal(cart: Cart) -> Decimal:
+diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+index 677e29f..3592d91 100644
+--- a/tests/test_pricing.py
++++ b/tests/test_pricing.py
+@@ -41,3 +41,13 @@ def test_expired_coupon_ignored(keyboard):
+ def test_tax_rates():
+     assert rate_for("NY") == Decimal("0.04")
+     assert rate_for("OR") == Decimal("0")
++
++
++def test_issue_001_round_half_up_2665():
++    # Company policy: half-up rounding. 2.665 must round to 2.67, not 2.66.
++    assert round_money(Decimal("2.665")) == Decimal("2.67")
++
++
++def test_issue_001_round_half_up_0125():
++    # Company policy: half-up rounding. 0.125 must round to 0.13, not 0.12.
++    assert round_money(Decimal("0.125")) == Decimal("0.13")

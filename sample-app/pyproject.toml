@@ -1,0 +1,12 @@
+[project]
+name = "shopcart"
+version = "0.4.2"
+description = "Small order-management library: carts, pricing, inventory, orders."
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

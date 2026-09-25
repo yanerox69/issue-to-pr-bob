@@ -1,0 +1,99 @@
+diff --git a/shopcart/tax.py b/shopcart/tax.py
+index 5a56720..63bd83b 100644
+--- a/shopcart/tax.py
++++ b/shopcart/tax.py
+@@ -10,7 +10,10 @@ TAX_RATES = {
+ 
+ 
+ def rate_for(region: str) -> Decimal:
+-    return TAX_RATES.get(region, Decimal("0"))
++    region = region.strip().upper()
++    if region not in TAX_RATES:
++        raise ValueError(f"Unknown tax region: {region!r}")
++    return TAX_RATES[region]
+ 
+ 
+ def tax_for(amount: Decimal, region: str) -> Decimal:
+diff --git a/tests/test_tax.py b/tests/test_tax.py
+new file mode 100644
+index 0000000..2820661
+--- /dev/null
++++ b/tests/test_tax.py
+@@ -0,0 +1,77 @@
++"""
++Reproducing tests for ISSUE-009.
++
++California orders sent from the mobile checkout arrive with a lowercase region
++code ("ca") or a code with trailing spaces ("CA ").  Because tax.rate_for() does
++a plain dict lookup the rates are not found, silently returning 0% and charging
++$0.00 tax.  Additionally, completely unknown region codes also return 0% instead
++of raising an error.
++
++These tests FAIL against the current implementation and must continue to fail
++until the bug is fixed.
++"""
++
++from decimal import Decimal
++
++import pytest
++
++from shopcart.tax import rate_for, tax_for
++
++CA_RATE = Decimal("0.0725")
++AMOUNT = Decimal("100.00")
++
++
++# --- ISSUE-009 case 1: lowercase region code ---
++
++def test_rate_for_lowercase_ca():
++    """rate_for('ca') must return the California rate, not 0."""
++    assert rate_for("ca") == CA_RATE
++
++
++def test_tax_for_lowercase_ca():
++    """tax_for() with lowercase 'ca' must not produce $0.00 tax."""
++    result = tax_for(AMOUNT, "ca")
++    assert result != Decimal("0"), (
++        "tax_for($100.00, 'ca') returned $0.00 — "
++        "lowercase region code is not being normalised"
++    )
++    assert result == AMOUNT * CA_RATE
++
++
++# --- ISSUE-009 case 2: trailing-space region code ---
++
++def test_rate_for_trailing_space_ca():
++    """rate_for('CA ') must return the California rate, not 0."""
++    assert rate_for("CA ") == CA_RATE
++
++
++def test_tax_for_trailing_space_ca():
++    """tax_for() with 'CA ' (trailing space) must not produce $0.00 tax."""
++    result = tax_for(AMOUNT, "CA ")
++    assert result != Decimal("0"), (
++        "tax_for($100.00, 'CA ') returned $0.00 — "
++        "region code with trailing space is not being stripped"
++    )
++    assert result == AMOUNT * CA_RATE
++
++
++# --- ISSUE-009 case 3: unknown region must raise, not silently return 0 ---
++
++def test_rate_for_unknown_region_raises():
++    """rate_for() must raise ValueError for an unrecognised region code."""
++    with pytest.raises((ValueError, KeyError)):
++        rate_for("ZZ")
++
++
++def test_tax_for_unknown_region_raises():
++    """tax_for() must raise for an unrecognised region, not silently charge 0%."""
++    with pytest.raises((ValueError, KeyError)):
++        tax_for(AMOUNT, "ZZ")
++
++
++# --- Sanity: Oregon (0% by law) must still work without raising ---
++
++def test_oregon_zero_tax_is_valid():
++    """OR is a known region with a legitimate 0% rate — must not raise."""
++    assert rate_for("OR") == Decimal("0")
++    assert tax_for(AMOUNT, "OR") == Decimal("0")

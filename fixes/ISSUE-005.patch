@@ -1,0 +1,79 @@
+diff --git a/prs/ISSUE-005.md b/prs/ISSUE-005.md
+new file mode 100644
+index 0000000..c6a1cc6
+--- /dev/null
++++ b/prs/ISSUE-005.md
+@@ -0,0 +1,31 @@
++## fix: reorder() deep-copies LineItems to prevent past-order mutation (ISSUE-005)
++
++**Fixes ISSUE-005**
++
++### Root cause
++
++`OrderBook.reorder()` built the new cart with `copy.copy(order.items)` — a
++shallow list copy. The list itself was new, but every `LineItem` object inside
++it was the **same instance** shared with the original order.
++When `Cart.add()` incremented `quantity` in-place on a `LineItem`, it silently
++corrupted the historical order record.
++
++### Fix
++
++`shopcart/orders.py:78` — replaced `copy.copy(order.items)` with
++`copy.deepcopy(order.items)`. The new cart now receives fully independent
++`LineItem` instances; mutations to the new cart have no effect on the original
++order.
++
++### Verification
++
++- Added `test_issue_005_reorder_does_not_mutate_original_order` in
++  `tests/test_orders.py`: places an order for 2 units, reorders, adds 1 more
++  to the new cart, and asserts the original order still shows 2 units.
++- All 21 tests pass.
++
++### Risk
++
++Low. `deepcopy` is strictly safer than `copy` here; no callers depend on
++shared identity between a new cart and a past order. The only observable
++behaviour change is the fix itself.
+diff --git a/shopcart/orders.py b/shopcart/orders.py
+index 520ad3b..d71a051 100644
+--- a/shopcart/orders.py
++++ b/shopcart/orders.py
+@@ -75,4 +75,4 @@ class OrderBook:
+     def reorder(self, order_id: str) -> Cart:
+         """Start a new cart pre-filled with the items of a past order."""
+         order = self.get(order_id)
+-        return Cart(customer_id=order.customer_id, items=copy.copy(order.items))
++        return Cart(customer_id=order.customer_id, items=copy.deepcopy(order.items))
+diff --git a/tests/test_orders.py b/tests/test_orders.py
+index 79539ad..b411add 100644
+--- a/tests/test_orders.py
++++ b/tests/test_orders.py
+@@ -41,3 +41,27 @@ def test_reorder_copies_items(inventory, mouse):
+     again = book.reorder(order.id)
+     assert again.customer_id == "c1"
+     assert [(i.product.sku, i.quantity) for i in again.items] == [("A100", 2)]
++
++
++def test_issue_005_reorder_does_not_mutate_original_order(inventory, mouse):
++    """Reordering and then adding items to the new cart must not mutate the
++    past order's item list (shared LineItem reference bug)."""
++    book = OrderBook(inventory)
++    cart = Cart("c1")
++    cart.add(mouse, 2)
++    order = book.place(cart, "CA", today=MONDAY)
++
++    # Snapshot the original order quantity before reorder
++    original_qty = order.items[0].quantity  # should be 2
++
++    # Buy again → new cart pre-filled with 2 × Wireless Mouse
++    new_cart = book.reorder(order.id)
++
++    # Add one more mouse to the *new* cart (now 3 in new cart)
++    new_cart.add(mouse, 1)
++
++    # The original order must still show 2, not 3
++    assert order.items[0].quantity == original_qty, (
++        f"Original order was mutated: expected quantity {original_qty}, "
++        f"got {order.items[0].quantity}"
++    )

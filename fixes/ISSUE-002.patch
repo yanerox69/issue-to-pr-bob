@@ -1,0 +1,74 @@
+diff --git a/prs/ISSUE-002.md b/prs/ISSUE-002.md
+new file mode 100644
+index 0000000..87b768d
+--- /dev/null
++++ b/prs/ISSUE-002.md
+@@ -0,0 +1,36 @@
++# fix: coupon rejected on expiry date (ISSUE-002)
++
++Fixes ISSUE-002
++
++## Root cause
++
++[`is_valid()`](shopcart/discounts.py:18) compared today against the expiry date with strict
++less-than (`today < coupon.expires`). The `expires` field is documented as the **last day**
++the coupon can be used, so a coupon presented on its expiry date was incorrectly rejected.
++
++## Fix
++
++Changed the comparison from `<` to `<=` in [`shopcart/discounts.py`](shopcart/discounts.py:18):
++
++```python
++# before
++return today < coupon.expires
++
++# after
++return today <= coupon.expires
++```
++
++One character, no behavioural change for any other date — coupons still expire the day after
++`expires`.
++
++## Verification
++
++- Added `test_issue_002_coupon_valid_on_expiry_date` in [`tests/test_discounts.py`](tests/test_discounts.py)
++  which asserts `is_valid()` returns `True` when `today == coupon.expires`.
++- All **21 tests pass**.
++
++## Risk
++
++Minimal. The only changed line is the boundary condition in a pure function with no side
++effects. Any caller that relied on the off-by-one (incorrectly) would have been wrong by
++design.
+diff --git a/shopcart/discounts.py b/shopcart/discounts.py
+index 8675c8d..c4fd4de 100644
+--- a/shopcart/discounts.py
++++ b/shopcart/discounts.py
+@@ -15,7 +15,7 @@ class Coupon:
+ 
+ 
+ def is_valid(coupon: Coupon, today: date) -> bool:
+-    return today < coupon.expires
++    return today <= coupon.expires
+ 
+ 
+ def total_discount(
+diff --git a/tests/test_discounts.py b/tests/test_discounts.py
+new file mode 100644
+index 0000000..8679dbb
+--- /dev/null
++++ b/tests/test_discounts.py
+@@ -0,0 +1,13 @@
++from datetime import date
++from decimal import Decimal
++
++from shopcart.discounts import Coupon, is_valid
++
++
++def test_issue_002_coupon_valid_on_expiry_date():
++    """A coupon whose expires == today must be accepted (it is the last valid day)."""
++    today = date(2024, 9, 30)
++    coupon = Coupon("FALL20", Decimal("20"), expires=today)
++    assert is_valid(coupon, today), (
++        f"Coupon expiring on {today} should be valid when used on {today}"
++    )

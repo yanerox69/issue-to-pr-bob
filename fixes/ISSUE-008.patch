@@ -1,0 +1,32 @@
+diff --git a/shopcart/dates.py b/shopcart/dates.py
+index def1963..8102578 100644
+--- a/shopcart/dates.py
++++ b/shopcart/dates.py
+@@ -8,7 +8,7 @@ def add_business_days(start: date, days: int) -> date:
+     added = 0
+     while added < days:
+         current += timedelta(days=1)
+-        if current.weekday() > 5:  # skip weekends
++        if current.weekday() >= 5:  # skip weekends
+             continue
+         added += 1
+     return current
+diff --git a/tests/test_dates.py b/tests/test_dates.py
+index 81069bc..1b56079 100644
+--- a/tests/test_dates.py
++++ b/tests/test_dates.py
+@@ -16,3 +16,14 @@ def test_express_delivery():
+ def test_unknown_shipping():
+     with pytest.raises(ValueError):
+         estimated_delivery(date(2026, 9, 21), "teleport")
++
++
++# Regression test for ISSUE-008:
++# Express orders placed on Friday must skip both Saturday AND Sunday.
++# 2026-09-25 is Friday. Adding 2 business days should land on Tuesday 2026-09-29
++# (Mon = day 1, Tue = day 2).  The buggy code counts Saturday as a business day
++# and returns 2026-09-28 (Monday), which is one day too early.
++def test_express_delivery_placed_on_friday_skips_full_weekend():
++    friday = date(2026, 9, 25)
++    expected = date(2026, 9, 29)  # Tuesday
++    assert estimated_delivery(friday, "express") == expected
