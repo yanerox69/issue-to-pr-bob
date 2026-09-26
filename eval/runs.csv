@@ -10,4 +10,4 @@ ISSUE-009,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
 ISSUE-010,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
 ISSUE-006,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
 ISSUE-007,1.61,,yes,batches B+C ~9.64 / 6 issues (from budget meter 95%->59%)
-ISSUE-005-retry,,,yes,second independent run: same partial fix (reorder only); hidden test still fails
+ISSUE-005-retry,1.95,,yes,second independent run: same partial fix (reorder only); hidden test still fails

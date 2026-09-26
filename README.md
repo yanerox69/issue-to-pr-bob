@@ -3,6 +3,7 @@
 **From a bug report to a review-ready pull request, with one command and guardrails Bob enforces itself.**
 
 Built solo for the IBM Bob 2.0 Hackathon (lablab.ai, Sep 25–27 2026).
+**Demo video:** https://youtu.be/dOwGorHE6jU · **Slides:** [Issue-to-PR-slides.pdf](Issue-to-PR-slides.pdf)
 
 ## The problem
 Fixing a reported bug is mostly glue work: decode the report, reproduce it, hunt for the cause, patch,
@@ -48,6 +49,7 @@ have a commit message only).
 | `sample-app/.bob/custom_modes.yaml` | The five modes: the actual deliverable |
 | `sample-app/issues/` | The 10 bug reports |
 | `fixes/` | Bob's output per issue: `.patch` + PR description |
+| `bob-sessions/` | IBM Bob task session summary screenshots |
 | `eval/` | Hidden tests, scorer, answer key, run logs |
 
 ## Reproduce it
